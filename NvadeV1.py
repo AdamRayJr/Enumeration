@@ -58,11 +58,12 @@ def run_command(command):
     _, _ = process.communicate()  # To ensure process completes and any remaining output is captured
     return ''.join(output)
 
-def simple_nmap_scan(target, exclude_ips=None):
+def simple_nmap_scan(target, SimpleScan_filename, exclude_ips=None):
     command = NMAP_SIMPLE_COMMAND.copy()
     if exclude_ips:
         command.extend(["--exclude", exclude_ips])
     command.append(target)
+    command += ["-oX", SimpleScan_filename]
     return run_command(command)
 
 def extract_open_ports(nmap_output):
@@ -73,11 +74,11 @@ def extract_open_ports(nmap_output):
         open_ports.append(match)
     return ",".join(open_ports)
 
-def detailed_nmap_scan(ports, target, filename, exclude_ips=None):
+def detailed_nmap_scan(ports, target, DetailedScan_filename, exclude_ips=None):
     command = NMAP_DETAILED_COMMAND.copy() + [f"-p{ports}", target]
     if exclude_ips:
         command += ["--exclude", exclude_ips]
-    command += ["-oX", filename]
+    command += ["-oX", DetailedScan_filename]
     return run_command(command)
 
 def get_target():
@@ -164,37 +165,59 @@ def run_evade_techniques(target, exclude_ips=None):
             return open_ports
     return None  # Return None if no open ports found after all evasion techniques
 
+def confirm_continue(prompt):
+    while True:
+        choice = input(prompt + " (yes/no) [default=yes]: ").lower()
+        if not choice or choice == "yes":
+            return True
+        elif choice == "no":
+            return False
+        else:
+            print("Invalid input. Please enter 'yes' or 'no', or press Enter for default.")
+
 def main():
     target = get_target()
     exclude_ips = None if is_valid_ip(target) or is_valid_cidr(target) or is_valid_domain(target) else get_exclude_ips()
 
     while True:
-        simple_filename = input("Enter the desired output filename (e.g. clientname): ").strip()
-        if simple_filename:  # If the filename is not an empty string
+        simple_filename = input("Enter the desired output filename (e.g., clientname): ").strip()
+        if simple_filename:  
             break
         print("Filename cannot be empty. Please enter a valid filename.")
 
     current_datetime = datetime.now().strftime('%Y%m%d_%H%M%S')
-    filename = f"{simple_filename}_nmap_results_{current_datetime}.xml"
+    SimpleScan_filename = f"{simple_filename}_Simple_Nmap_Results_{current_datetime}.xml"
+    DetailedScan_filename = f"{simple_filename}_Detailed_Nmap_Results_{current_datetime}.xml"
+    EvasionScan_filename = f"{simple_filename}_Evasion_Nmap_Results_{current_datetime}.xml"
 
     print(f"\nRunning simple Nmap scan (nmap -p- -Pn) on {target}...\n")
-    simple_nmap_output = simple_nmap_scan(target, exclude_ips)
+    simple_nmap_output = simple_nmap_scan(target, SimpleScan_filename, exclude_ips)
+    print(f"\nSimple scan complete. Results saved to {SimpleScan_filename}")
 
     open_ports = extract_open_ports(simple_nmap_output)
     
     if open_ports:
         print(f"\nExtracted open ports: {open_ports}")
-        print(f"\nRunning detailed Nmap scan (sudo nmap -sS -sC -sV -O -Pn) on {target} for the detected open ports...")
-        detailed_nmap_scan(open_ports, target, filename, exclude_ips)
-        print(f"\nScan complete. Results saved to {filename}")
+        if not confirm_continue("\nDo you want to continue to run detailed Nmap scan?"):
+            return
+
+        print(f"\nRunning detailed Nmap scan (sudo nmap -sS -sC -sV -O -Pn) on {target} for the detected open ports...\n")
+        detailed_nmap_scan(open_ports, target, DetailedScan_filename, exclude_ips)
+        print(f"\nDetailed scan complete. Results saved to {DetailedScan_filename}")
     else:
-        print("\nNo open ports found in the initial scan. Applying evasion techniques...")
+        if not confirm_continue("\nNo open ports found in the initial scan. Do you want to continue with evasion techniques?"):
+            return
+
+        print("\nApplying evasion techniques...")
         evasion_ports = run_evade_techniques(target, exclude_ips)
         
         if evasion_ports:
-            print(f"\nRunning detailed Nmap scan (sudo nmap -sS -sC -sV -O -Pn) on {target} for the detected open ports after evasion...")
-            detailed_nmap_scan(evasion_ports, target, filename, exclude_ips)
-            print(f"\nScan complete. Results saved to {filename}")
+            if not confirm_continue("\nDo you want to continue to run detailed Nmap scan after evasion?"):
+                return
+
+            print(f"\nRunning detailed Nmap scan (sudo nmap -sS -sC -sV -O -Pn) on {target} for the detected open ports after evasion...\n")
+            detailed_nmap_scan(evasion_ports, target, EvasionScan_filename, exclude_ips)
+            print(f"\nDetailed scan complete. Results saved to {EvasionScan_filename}")
         else:
             print("\nNo open ports found even after applying all evasion techniques.")
 
